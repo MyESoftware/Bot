@@ -1,0 +1,11 @@
+{
+  "companyName": "MyE Software",
+  "humanHours": "Lunes a Viernes de 09:00 a 16:00 hs",
+  "portfolioLinks": [
+    "https://mye-software-demo-1.com",
+    "https://mye-software-demo-2.com",
+    "https://mye-software-demo-3.com"
+  ],
+  "followupDelayMinutes": 360,
+  "maxFollowups": 2
+}

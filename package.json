@@ -1,0 +1,19 @@
+{
+  "name": "bot-whatsapp-master-pro-v6",
+  "version": "6.0.0",
+  "description": "Bot vendedor de webs con webhook, panel y deploy en Render",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "panel": "node server.js",
+    "bot": "node bot.js"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "express": "^4.21.2",
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BOT MASTER PRO V6</title>
+  <style>
+    :root {
+      --bg:#07111f; --panel:#0f172a; --panel-2:#111c31; --text:#e5eefc; --muted:#9fb1cb;
+      --line:rgba(255,255,255,.08); --accent:#60a5fa; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
+    }
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,Arial,sans-serif;background:linear-gradient(180deg,#081120,#020617);color:var(--text)}
+    .wrap{max-width:1280px;margin:0 auto;padding:24px}
+    .hero{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:18px}
+    .card{background:rgba(15,23,42,.95);border:1px solid var(--line);border-radius:24px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+    h1,h2,h3,p{margin:0} h1{font-size:34px;margin-bottom:10px} h2{font-size:20px;margin-bottom:12px}
+    .muted{color:var(--muted)} .pill{display:inline-flex;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;margin-right:8px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+    .label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .value{font-size:30px;font-weight:800;margin-top:8px}
+    .toolbar{display:flex;gap:12px;margin:16px 0;flex-wrap:wrap}
+    input, textarea{padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:#091224;color:var(--text);width:100%}
+    button{border:0;border-radius:14px;padding:12px 16px;background:var(--accent);color:white;font-weight:700;cursor:pointer}
+    table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:20px;overflow:hidden}
+    th,td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;font-size:14px}
+    th{background:#0b1426;color:#c8d7ef}
+    .badge{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;margin:2px;background:#1e293b;border:1px solid var(--line)}
+    .hot{background:rgba(239,68,68,.16)} .warm{background:rgba(245,158,11,.16)} .cold{background:rgba(34,197,94,.12)} .ready{background:rgba(96,165,250,.16)}
+    .small{font-size:13px} .status{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;background:#091224;padding:14px;border-radius:16px;border:1px solid var(--line)}
+    @media (max-width: 920px){.hero,.two{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="card">
+        <div class="pill">WhatsApp Seller Bot</div><div class="pill">Render Ready</div>
+        <h1>BOT MASTER PRO V6</h1>
+        <p class="muted">Bot vendedor para agencias web con captura de leads, webhook desde tu web, seguimiento automático y panel simple.</p>
+        <div class="status" id="status"></div>
+      </div>
+      <div class="card">
+        <h2>Webhook para tu web</h2>
+        <p class="muted small">Usá esta URL desde Vercel o cualquier formulario para crear un lead y disparar el WhatsApp automático.</p>
+        <div class="mono" id="webhookInfo">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="grid" id="stats"></div>
+
+    <div class="card">
+      <div class="toolbar">
+        <input id="search" placeholder="Buscar por nombre, teléfono, rubro, interés..." />
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Origen</th>
+            <th>Proyecto</th>
+            <th>Nivel</th>
+            <th>Estado</th>
+            <th>Etiquetas</th>
+            <th>Seguimiento</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="two">
+      <div class="card">
+        <h2>Estado del bot</h2>
+        <div class="mono" id="botState">Cargando...</div>
+      </div>
+      <div class="card">
+        <h2>Cómo vincular WhatsApp en Render</h2>
+        <div class="mono">1. Deploy en Render.
+2. Abrí /api/qr o revisá los logs.
+3. Escaneá el QR con WhatsApp.
+4. Cuando quede conectado, tu web ya puede enviar leads a /api/webhook/lead.
+
+Tip: guardá el token del webhook en una variable segura.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function getJSON(url) {
+      const res = await fetch(url)
+      return res.json()
+    }
+
+    function levelBadge(level) {
+      const cls = level === 'caliente' ? 'hot' : level === 'tibio' ? 'warm' : level === 'listo' ? 'ready' : 'cold'
+      return `<span class="badge ${cls}">${level || '-'}</span>`
+    }
+
+    async function loadStatus() {
+      const status = await getJSON('/api/status')
+      const base = window.location.origin
+      document.getElementById('status').innerHTML = `
+        <span class="badge ${status.connected ? 'ready' : 'warm'}">${status.connected ? 'Conectado' : 'Esperando QR'}</span>
+        <span class="badge">Leads: ${status.leads}</span>
+        <span class="badge">Último QR: ${status.lastQrAt || '-'}</span>
+      `
+      document.getElementById('botState').textContent = JSON.stringify(status, null, 2)
+      document.getElementById('webhookInfo').textContent = `${base}/api/webhook/lead\nHeader: x-webhook-token: TU_TOKEN\nMétodo: POST`
+    }
+
+    async function loadStats() {
+      const stats = await getJSON('/api/stats')
+      const cards = [
+        ['Total', stats.total],
+        ['Caliente', stats.caliente],
+        ['Tibio', stats.tibio],
+        ['Frío', stats.frio],
+        ['Listo', stats.listo],
+        ['Seguimiento', stats.seguimiento],
+        ['Desde Web', stats.web],
+        ['Desde WhatsApp', stats.whatsapp],
+      ]
+      document.getElementById('stats').innerHTML = cards.map(([label, value]) => `
+        <div class="card"><div class="label">${label}</div><div class="value">${value}</div></div>
+      `).join('')
+    }
+
+    async function loadLeads(q = '') {
+      const leads = await getJSON('/api/leads?q=' + encodeURIComponent(q))
+      document.getElementById('tbody').innerHTML = leads.map(lead => `
+        <tr>
+          <td>${lead.nombre || '-'}</td>
+          <td>${lead.telefono || '-'}</td>
+          <td>${lead.fuente || '-'}</td>
+          <td>${lead.proyecto || lead.interes || '-'}</td>
+          <td>${levelBadge(lead.nivel)}</td>
+          <td>${lead.estado || '-'}</td>
+          <td>${(lead.etiquetas || []).map(t => `<span class="badge">${t}</span>`).join(' ')}</td>
+          <td>${lead.deseaSeguimiento === true ? 'Sí' : lead.deseaSeguimiento === false ? 'No' : '-'}</td>
+        </tr>
+      `).join('')
+    }
+
+    document.getElementById('search').addEventListener('input', (e) => loadLeads(e.target.value))
+    loadStatus()
+    loadStats()
+    loadLeads()
+    setInterval(loadStatus, 15000)
+  </script>
+</body>
+</html>

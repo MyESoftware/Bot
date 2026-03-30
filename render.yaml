@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: bot-whatsapp-master-pro-v6
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: WEBHOOK_TOKEN
+        generateValue: true
+      - key: COMPANY_NAME
+        value: MyE Software
+      - key: HUMAN_HOURS
+        value: Lunes a Viernes de 09:00 a 16:00 hs
+      - key: FOLLOWUP_DELAY_MINUTES
+        value: 360
+      - key: MAX_FOLLOWUPS
+        value: 2
