@@ -626,13 +626,20 @@ async function startBot() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
 
-    if (qr) {
+   if (qr) {
       lastQr = qr
       botStatus.lastQrAt = new Date().toISOString()
       console.log('\n============================')
       console.log('ESCANEÁ ESTE QR CON WHATSAPP')
       console.log('============================\n')
+      
+      // Esto es lo que ya tenías
       QRCode.generate(qr, { small: true })
+
+      // AGREGÁ SOLO ESTAS LÍNEAS ABAJO:
+      console.log('\n🔗 LINK DE EMERGENCIA SI EL QR SE VE MAL:');
+      console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300\n`);
+      
       console.log('\nWhatsApp → Dispositivos vinculados → Vincular dispositivo\n')
     }
 
