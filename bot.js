@@ -5,13 +5,13 @@ const {
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys')
 const pino = require('pino')
-const QRCode = require('qrcode-terminal')
 const { Boom } = require('@hapi/boom')
 const fs = require('fs')
 const path = require('path')
+const QRCodeImage = require('qrcode')
 
 const baseDir = __dirname
-const sessionsDir = path.join(baseDir, 'auth')
+const sessionsDir = path.join(baseDir, process.env.AUTH_DIR || 'auth')
 const dataDir = path.join(baseDir, 'data')
 const leadsFile = path.join(dataDir, 'leads.json')
 const sessionsFile = path.join(dataDir, 'chat_sessions.json')
@@ -23,12 +23,15 @@ let reconnecting = false
 let reminderTimer = null
 let activeSocket = null
 let lastQr = null
+let lastQrImage = null
 let botStatus = {
   connected: false,
   user: null,
   lastConnectionAt: null,
   lastQrAt: null,
-  lastError: null
+  lastError: null,
+  serverMode: process.env.SERVER_MODE || 'oracle-vps',
+  authDir: sessionsDir
 }
 
 function ensureDir(dir) {
@@ -95,6 +98,7 @@ function getConfig() {
     advisorPhone: process.env.ADVISOR_PHONE || '',
     advisorEmail: process.env.ADVISOR_EMAIL || '',
     publicBaseUrl: process.env.PUBLIC_BASE_URL || '',
+    panelPassword: process.env.PANEL_PASSWORD || '',
     portfolioLinks: [
       'https://mye-software-demo-1.com',
       'https://mye-software-demo-2.com',
@@ -162,7 +166,7 @@ function inferIntent(rawText) {
     if (group.keywords.some(k => t.includes(normalizeText(k)))) return group.intent
   }
 
-  if (['1','2','3','4','5','6','7'].includes(t)) {
+  if (['1', '2', '3', '4', '5', '6', '7'].includes(t)) {
     return {
       '1': 'budget',
       '2': 'landing',
@@ -395,38 +399,16 @@ function formatMoney(value) {
 }
 
 function buildBudgetStart() {
-  return `💼 *Presupuesto automático V6*
-
-Te voy a hacer unas preguntas rápidas para darte una estimación y ordenar tu consulta.
-
-*Paso 1 de 8*
-¿Cuál es tu *nombre*?`
+  return `💼 *Presupuesto automático V6*\n\nTe voy a hacer unas preguntas rápidas para darte una estimación y ordenar tu consulta.\n\n*Paso 1 de 8*\n¿Cuál es tu *nombre*?`
 }
 
 function buildFollowupQuestion() {
-  return `📌 Antes de terminar:
-¿Querés que te haga seguimiento automático por este medio si todavía no decidís?
-
-Respondé:
-*SI* o *NO*`
+  return `📌 Antes de terminar:\n¿Querés que te haga seguimiento automático por este medio si todavía no decidís?\n\nRespondé:\n*SI* o *NO*`
 }
 
 function buildBudgetSummary(data) {
   const est = estimateByProject(data.proyecto || '', data.extras || '')
-  return `📋 *Resumen de tu consulta*
-
-👤 Nombre: ${data.nombre || '-'}
-📧 Email: ${data.email || '-'}
-🏢 Rubro: ${data.rubro || '-'}
-🌐 Proyecto: ${data.proyecto || '-'}
-📦 Extras: ${data.extras || '-'}
-💵 Inversión estimada del cliente: ${data.budgetRange || '-'}
-🔥 Prioridad: ${data.urgencia || '-'}
-
-💰 *Presupuesto estimado para ${est.tipo}:*
-Desde *$${formatMoney(est.min)}* hasta *$${formatMoney(est.max)}*
-
-✅ Tu consulta quedó registrada.`
+  return `📋 *Resumen de tu consulta*\n\n👤 Nombre: ${data.nombre || '-'}\n📧 Email: ${data.email || '-'}\n🏢 Rubro: ${data.rubro || '-'}\n🌐 Proyecto: ${data.proyecto || '-'}\n📦 Extras: ${data.extras || '-'}\n💵 Inversión estimada del cliente: ${data.budgetRange || '-'}\n🔥 Prioridad: ${data.urgencia || '-'}\n\n💰 *Presupuesto estimado para ${est.tipo}:*\nDesde *$${formatMoney(est.min)}* hasta *$${formatMoney(est.max)}*\n\n✅ Tu consulta quedó registrada.`
 }
 
 function buildSalesPitchForIntent(intent) {
@@ -525,7 +507,7 @@ function startReminderLoop(sock) {
 function normalizePhoneForWhatsApp(phone = '') {
   const digits = String(phone).replace(/\D/g, '')
   if (!digits) return ''
-  if (digits.endsWith('@s.whatsapp.net')) return digits
+  if (digits.includes('@s.whatsapp.net')) return digits
   return `${digits}@s.whatsapp.net`
 }
 
@@ -592,7 +574,7 @@ function getBotSnapshot() {
   return {
     ...botStatus,
     hasQr: Boolean(lastQr),
-    qrPreviewAvailable: Boolean(lastQr),
+    qrPreviewAvailable: Boolean(lastQrImage),
     leads: readJson(leadsFile, []).length
   }
 }
@@ -601,7 +583,12 @@ function getLastQr() {
   return lastQr
 }
 
+function getLastQrImage() {
+  return lastQrImage
+}
+
 async function startBot() {
+  ensureDir(sessionsDir)
   ensureJsonFile(leadsFile, [])
   ensureJsonFile(sessionsFile, {})
   ensureJsonFile(rulesFile, [])
@@ -614,7 +601,7 @@ async function startBot() {
   const sock = makeWASocket({
     version,
     auth: state,
-    logger: pino({ level: 'silent' }),
+    logger: pino({ level: process.env.LOG_LEVEL || 'silent' }),
     browser: ['Ubuntu', 'Chrome', '122.0.0.0'],
     markOnlineOnConnect: true,
     syncFullHistory: false
@@ -625,22 +612,38 @@ async function startBot() {
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
-
-   if (qr) {
+if (qr) {
       lastQr = qr
       botStatus.lastQrAt = new Date().toISOString()
-      console.log('\n============================')
-      console.log('ESCANEÁ ESTE QR CON WHATSAPP')
-      console.log('============================\n')
       
-      // Esto es lo que ya tenías
-      QRCode.generate(qr, { small: true })
+      try {
+        // 1. Intento principal: Generar DataURL para el Panel Web
+        lastQrImage = await QRCodeImage.toDataURL(qr, {
+          errorCorrectionLevel: 'M',
+          margin: 2,
+          scale: 8
+        })
+        console.log('✅ QR para panel web generado correctamente.')
+      } catch (error) {
+        console.error('❌ Error generando imagen QR para web:', error.message)
+        botStatus.lastError = error.message
+      }
 
-      // AGREGÁ SOLO ESTAS LÍNEAS ABAJO:
-      console.log('\n🔗 LINK DE EMERGENCIA SI EL QR SE VE MAL:');
-      console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300\n`);
-      
-      console.log('\nWhatsApp → Dispositivos vinculados → Vincular dispositivo\n')
+      // 2. RESPALDO INFAILIBLE: Link de imagen externa (siempre funciona)
+      console.log('\n-------------------------------------------------------')
+      console.log('🔗 LINK DE EMERGENCIA (Si el panel o la consola fallan):');
+      console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`);
+      console.log('-------------------------------------------------------\n');
+
+      // 3. RESPALDO CONSOLA: Por si estás viendo la terminal de Oracle/Render
+      try {
+        const QRCodeTerminal = require('qrcode-terminal');
+        QRCodeTerminal.generate(qr, { small: true });
+      } catch (e) {
+        console.log("No se pudo mostrar QR en terminal, usá el link de arriba.");
+      }
+
+      console.log(`🌐 Recordá que podés entrar a: ${getConfig().publicBaseUrl || 'http://TU_IP:3000'}/qr`);
     }
 
     if (connection === 'open') {
@@ -649,8 +652,10 @@ async function startBot() {
       botStatus.user = sock?.user?.id || null
       botStatus.lastConnectionAt = new Date().toISOString()
       botStatus.lastError = null
+      lastQr = null
+      lastQrImage = null
       console.log('✅ Bot conectado correctamente a WhatsApp.')
-      console.log('✅ V6 activo: ventas, leads web, seguimiento, panel, webhook, Render.')
+      console.log('✅ Oracle VPS mode activo: sesión persistente, QR web, panel simple y PM2.')
       startReminderLoop(sock)
     }
 
@@ -667,12 +672,12 @@ async function startBot() {
         console.log('🔄 Reintentando conexión en 3 segundos...')
         setTimeout(() => startBot().catch(err => console.error('❌ Reintento fallido:', err.message)), 3000)
       } else if (!shouldReconnect) {
-        console.log('❌ Sesión cerrada. Eliminá la carpeta auth y volvé a ejecutar.')
+        console.log(`❌ Sesión cerrada. Eliminá la carpeta ${sessionsDir} y volvé a escanear.`)
       }
     }
   })
 
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+  sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages?.[0]
     if (!msg?.message) return
 
@@ -899,6 +904,7 @@ module.exports = {
   startBot,
   getBotSnapshot,
   getLastQr,
+  getLastQrImage,
   sendManualMessage,
   ingestWebLead,
   getConfig,
