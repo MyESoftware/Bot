@@ -24,6 +24,7 @@ let reminderTimer = null
 let activeSocket = null
 let lastQr = null
 let lastQrImage = null
+
 let botStatus = {
   connected: false,
   user: null,
@@ -93,44 +94,80 @@ function ownJids(sock) {
 
 function getConfig() {
   const defaultConfig = {
-    companyName: process.env.COMPANY_NAME || 'MyE Software',
-    humanHours: process.env.HUMAN_HOURS || 'Lunes a Viernes de 09:00 a 16:00 hs',
-    advisorPhone: process.env.ADVISOR_PHONE || '',
-    advisorEmail: process.env.ADVISOR_EMAIL || '',
-    publicBaseUrl: process.env.PUBLIC_BASE_URL || '',
-    panelPassword: process.env.PANEL_PASSWORD || '',
-    portfolioLinks: [
-      'https://mye-software-demo-1.com',
-      'https://mye-software-demo-2.com',
-      'https://mye-software-demo-3.com'
-    ],
-    landingPriceFrom: 180000,
-    corporatePriceFrom: 310000,
-    systemPriceFrom: 650000,
-    ecommercePriceFrom: 1200000,
-    followupDelayMinutes: Number(process.env.FOLLOWUP_DELAY_MINUTES || 360),
-    maxFollowups: Number(process.env.MAX_FOLLOWUPS || 2),
-    webhookToken: process.env.WEBHOOK_TOKEN || 'cambiar-este-token',
-    autoSendPortfolioAfterBudget: true,
+    companyName: 'MyE Software',
+    webSite: 'https://myesoftware.com.ar',
+    publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://TU_IP:3000',
+    humanHours: 'Lunes a Viernes de 09:00 a 18:00 hs',
+    advisorPhone: '',
+    advisorEmail: '',
     askEmailInFlow: true,
     askBudgetRangeInFlow: true,
-    askDeadlineInFlow: true
+    autoSendPortfolioAfterBudget: false,
+    followupDelayMinutes: 60,
+    maxFollowups: 2,
+    landingPrice: { min: 160000, max: 260000 },
+    webPrice: { min: 275000, max: 515000 },
+    ecommercePrice: { min: 990000, max: 1550000 },
+    systemPrice: { min: 490000, max: 2500000 },
+    portfolioLinks: [
+      'https://myesoftware.com.ar'
+    ]
   }
 
   const fileConfig = readJson(configFile, defaultConfig)
+
   return {
     ...defaultConfig,
     ...fileConfig,
-    portfolioLinks: fileConfig.portfolioLinks?.length ? fileConfig.portfolioLinks : defaultConfig.portfolioLinks
+    landingPrice: {
+      ...defaultConfig.landingPrice,
+      ...(fileConfig.landingPrice || {})
+    },
+    webPrice: {
+      ...defaultConfig.webPrice,
+      ...(fileConfig.webPrice || {})
+    },
+    ecommercePrice: {
+      ...defaultConfig.ecommercePrice,
+      ...(fileConfig.ecommercePrice || {})
+    },
+    systemPrice: {
+      ...defaultConfig.systemPrice,
+      ...(fileConfig.systemPrice || {})
+    },
+    portfolioLinks:
+      fileConfig.portfolioLinks?.length
+        ? fileConfig.portfolioLinks
+        : defaultConfig.portfolioLinks
   }
 }
 
 function detectBudgetRange(text = '') {
   const t = normalizeText(text)
   if (!t) return ''
-  if (t.includes('menos') || t.includes('bajo') || t.includes('economico') || t.includes('150') || t.includes('200')) return 'bajo'
-  if (t.includes('medio') || t.includes('300') || t.includes('400') || t.includes('500')) return 'medio'
-  if (t.includes('alto') || t.includes('premium') || t.includes('600') || t.includes('1000') || t.includes('1.000')) return 'alto'
+  if (
+    t.includes('menos') ||
+    t.includes('bajo') ||
+    t.includes('economico') ||
+    t.includes('150') ||
+    t.includes('200')
+  ) return 'bajo'
+
+  if (
+    t.includes('medio') ||
+    t.includes('300') ||
+    t.includes('400') ||
+    t.includes('500')
+  ) return 'medio'
+
+  if (
+    t.includes('alto') ||
+    t.includes('premium') ||
+    t.includes('600') ||
+    t.includes('1000') ||
+    t.includes('1.000')
+  ) return 'alto'
+
   return text.trim()
 }
 
@@ -158,7 +195,6 @@ function inferIntent(rawText) {
     { intent: 'sistema', keywords: ['sistema', 'turnos', 'stock', 'panel', 'reservas', 'app web', 'gestion'] },
     { intent: 'landing', keywords: ['landing', 'landing page', 'una sola pagina', 'pagina simple'] },
     { intent: 'web', keywords: ['pagina web', 'sitio web', 'web', 'pagina para mi negocio', 'necesito una pagina'] },
-    { intent: 'portfolio', keywords: ['portfolio', 'portafolio', 'ejemplos', 'trabajos', 'muestras', 'casos'] },
     { intent: 'budget', keywords: ['precio', 'precios', 'presupuesto', 'costo', 'costos', 'cuanto sale', 'cuanto cuesta'] }
   ]
 
@@ -166,15 +202,14 @@ function inferIntent(rawText) {
     if (group.keywords.some(k => t.includes(normalizeText(k)))) return group.intent
   }
 
-  if (['1', '2', '3', '4', '5', '6', '7'].includes(t)) {
+  if (['1', '2', '3', '4', '5', '6'].includes(t)) {
     return {
       '1': 'budget',
       '2': 'landing',
       '3': 'web',
       '4': 'tienda',
       '5': 'sistema',
-      '6': 'portfolio',
-      '7': 'asesor'
+      '6': 'asesor'
     }[t]
   }
 
@@ -195,6 +230,7 @@ function loadRules() {
 function findBestRule(message, rules) {
   const normalized = normalizeText(message)
   if (!normalized) return null
+
   let bestMatch = null
 
   for (const rule of rules) {
@@ -208,6 +244,7 @@ function findBestRule(message, rules) {
       }
     }
   }
+
   return bestMatch
 }
 
@@ -237,6 +274,7 @@ function defaultLead(phone) {
 function saveLeadPatch(phone, patch) {
   const leads = readJson(leadsFile, [])
   const idx = leads.findIndex(l => l.telefono === phone)
+
   if (idx === -1) {
     leads.push({ ...defaultLead(phone), ...patch, updatedAt: new Date().toISOString() })
   } else {
@@ -246,6 +284,7 @@ function saveLeadPatch(phone, patch) {
       updatedAt: new Date().toISOString()
     }
   }
+
   writeJson(leadsFile, leads)
   return getLead(phone)
 }
@@ -258,6 +297,7 @@ function getLead(phone) {
 function updateTagsAndLevel(phone) {
   const lead = getLead(phone)
   if (!lead) return
+
   const tags = new Set(lead.etiquetas || [])
 
   if (lead.interes) tags.add(lead.interes)
@@ -272,8 +312,16 @@ function updateTagsAndLevel(phone) {
   if (lead.estado) tags.add(`estado_${normalizeText(lead.estado).replace(/\s+/g, '_')}`)
   if (lead.nivel) tags.add(`lead_${lead.nivel}`)
 
-  const refreshedLevel = classifyLeadByIntent(lead.interes, `${lead.proyecto} ${lead.consulta}`, lead)
-  saveLeadPatch(phone, { etiquetas: Array.from(tags), nivel: refreshedLevel })
+  const refreshedLevel = classifyLeadByIntent(
+    lead.interes,
+    `${lead.proyecto} ${lead.consulta}`,
+    lead
+  )
+
+  saveLeadPatch(phone, {
+    etiquetas: Array.from(tags),
+    nivel: refreshedLevel
+  })
 }
 
 function getChatSessions() {
@@ -300,8 +348,10 @@ function clearChatSession(chatId) {
 function saveReminder(phone, reminder) {
   const reminders = readJson(remindersFile, [])
   const idx = reminders.findIndex(r => r.telefono === phone)
+
   if (idx === -1) reminders.push(reminder)
   else reminders[idx] = reminder
+
   writeJson(remindersFile, reminders)
 }
 
@@ -313,6 +363,7 @@ function removeReminder(phone) {
 function scheduleFollowup(phone, chatId) {
   const config = getConfig()
   const dueAt = new Date(Date.now() + config.followupDelayMinutes * 60 * 1000).toISOString()
+
   saveReminder(phone, {
     telefono: phone,
     chatId,
@@ -327,63 +378,46 @@ function cancelFollowup(phone) {
 }
 
 function buildMenu() {
-  const config = getConfig()
-  return `╔════════════════════╗
-   *${config.companyName}*
-╚════════════════════╝
+  return `*MyE Software - Soluciones Digitales* 🚀
 
-Hola 👋 Soy el asistente virtual de *${config.companyName}*.
+Hola. Seleccioná una opción escribiendo solo el *NÚMERO*:
 
-📌 Estoy preparado para ayudarte a elegir la mejor web para tu negocio.
-⏰ Atención humana:
-${config.humanHours}
-
-*Elegí una opción:*
-
-1️⃣ Presupuesto web
+1️⃣ Presupuesto Web
 2️⃣ Landing Page
-3️⃣ Página web empresarial
-4️⃣ Tienda online
-5️⃣ Sistema a medida
-6️⃣ Ver portfolio
-7️⃣ Hablar con asesor
+3️⃣ Página Web Empresarial
+4️⃣ Tienda Online
+5️⃣ Sistema a Medida
+6️⃣ Hablar con Asesor
 
-También podés escribir:
-*precio, presupuesto, web, tienda, sistema, portfolio, asesor*`
-}
-
-function buildPortfolioMessage() {
-  const config = getConfig()
-  const links = (config.portfolioLinks || []).map(l => `🌐 ${l}`).join('\n')
-  return `📂 *Portfolio automático*
-
-Estos son algunos ejemplos para que veas el tipo de trabajos que podemos hacer:\n\n${links}\n\nSi querés una propuesta, respondé:\n*1* para presupuesto\no escribí directamente:\n*asesor*`
+---
+⚠️ Por favor, respondé solo con el número de la opción deseada.`
 }
 
 function estimateByProject(project, extras = '') {
   const p = normalizeText(project)
   const e = normalizeText(extras)
   const config = getConfig()
+
   let min = 0
   let max = 0
   let tipo = 'Página Web Profesional'
 
   if (p.includes('landing')) {
     tipo = 'Landing Page'
-    min = config.landingPriceFrom
-    max = config.landingPriceFrom + 100000
+    min = config.landingPrice.min
+    max = config.landingPrice.max
   } else if (p.includes('tienda') || p.includes('ecommerce')) {
     tipo = 'Tienda Online'
-    min = config.ecommercePriceFrom
-    max = config.ecommercePriceFrom + 600000
+    min = config.ecommercePrice.min
+    max = config.ecommercePrice.max
   } else if (p.includes('sistema') || p.includes('app') || p.includes('panel')) {
     tipo = 'Sistema a medida'
-    min = config.systemPriceFrom
-    max = config.systemPriceFrom + 1550000
+    min = config.systemPrice.min
+    max = config.systemPrice.max
   } else {
     tipo = 'Página Web Profesional'
-    min = config.corporatePriceFrom
-    max = config.corporatePriceFrom + 240000
+    min = config.webPrice.min
+    max = config.webPrice.max
   }
 
   if (e.includes('panel')) { min += 120000; max += 350000 }
@@ -399,44 +433,133 @@ function formatMoney(value) {
 }
 
 function buildBudgetStart() {
-  return `💼 *Presupuesto automático V6*\n\nTe voy a hacer unas preguntas rápidas para darte una estimación y ordenar tu consulta.\n\n*Paso 1 de 8*\n¿Cuál es tu *nombre*?`
+  return `💼 *Presupuesto automático V6*
+
+Te voy a hacer unas preguntas rápidas para darte una estimación y ordenar tu consulta.
+
+*Paso 1 de 8*
+¿Cuál es tu *nombre*?`
 }
 
 function buildFollowupQuestion() {
-  return `📌 Antes de terminar:\n¿Querés que te haga seguimiento automático por este medio si todavía no decidís?\n\nRespondé:\n*SI* o *NO*`
+  return `📌 Antes de terminar:
+¿Querés que te haga seguimiento automático por este medio si todavía no decidís?
+
+Respondé:
+*SI* o *NO*`
 }
 
 function buildBudgetSummary(data) {
   const est = estimateByProject(data.proyecto || '', data.extras || '')
-  return `📋 *Resumen de tu consulta*\n\n👤 Nombre: ${data.nombre || '-'}\n📧 Email: ${data.email || '-'}\n🏢 Rubro: ${data.rubro || '-'}\n🌐 Proyecto: ${data.proyecto || '-'}\n📦 Extras: ${data.extras || '-'}\n💵 Inversión estimada del cliente: ${data.budgetRange || '-'}\n🔥 Prioridad: ${data.urgencia || '-'}\n\n💰 *Presupuesto estimado para ${est.tipo}:*\nDesde *$${formatMoney(est.min)}* hasta *$${formatMoney(est.max)}*\n\n✅ Tu consulta quedó registrada.`
+
+  return `📋 *Resumen de tu consulta*
+
+👤 Nombre: ${data.nombre || '-'}
+📧 Email: ${data.email || '-'}
+🏢 Rubro: ${data.rubro || '-'}
+🌐 Proyecto: ${data.proyecto || '-'}
+📦 Extras: ${data.extras || '-'}
+💵 Inversión estimada del cliente: ${data.budgetRange || '-'}
+🔥 Prioridad: ${data.urgencia || '-'}
+
+💰 *Presupuesto estimado para ${est.tipo}:*
+Desde *$${formatMoney(est.min)}* hasta *$${formatMoney(est.max)}*
+
+✅ Tu consulta quedó registrada.`
+}
+
+function buildPortfolioMessage() {
+  const config = getConfig()
+  const links = (config.portfolioLinks || []).join('\n• ')
+  return `📁 *Portfolio / referencias*\n• ${links}`
 }
 
 function buildSalesPitchForIntent(intent) {
   const config = getConfig()
+
   if (intent === 'landing') {
-    return `🚀 *Landing Page*\n\nIdeal para vender un servicio puntual, lanzar campañas o captar leads.\n\nIncluye:\n• Diseño premium\n• Botón de WhatsApp\n• Formulario\n• SEO básico\n\n💰 Desde *$${formatMoney(config.landingPriceFrom)}*\n\nSi querés una propuesta exacta, respondé *presupuesto*.`
+    return `🚀 *Landing Page*
+
+Ideal para vender un servicio puntual, lanzar campañas o captar leads.
+
+Incluye:
+• Diseño premium
+• Botón de WhatsApp
+• Formulario
+• SEO básico
+
+💰 Desde *$${formatMoney(config.landingPrice.min)}*
+
+Si querés una propuesta exacta, respondé *presupuesto*.`
   }
+
   if (intent === 'web') {
-    return `🌐 *Página Web Profesional*\n\nIdeal para empresas y negocios que necesitan presencia seria y que convierta.\n\nIncluye:\n• Hasta 5 secciones\n• Formulario de contacto\n• SEO básico\n• Integración con WhatsApp\n\n💰 Desde *$${formatMoney(config.corporatePriceFrom)}*\n\nSi querés una propuesta exacta, respondé *presupuesto*.`
+    return `🌐 *Página Web Profesional*
+
+Ideal para empresas y negocios que necesitan presencia seria y que convierta.
+
+Incluye:
+• Hasta 5 secciones
+• Formulario de contacto
+• SEO básico
+• Integración con WhatsApp
+
+💰 Desde *$${formatMoney(config.webPrice.min)}*
+
+Si querés una propuesta exacta, respondé *presupuesto*.`
   }
+
   if (intent === 'tienda') {
-    return `🛒 *Tienda Online*\n\nIdeal para vender productos por internet y automatizar consultas.\n\nIncluye:\n• Catálogo\n• Carrito o pedido\n• Integración WhatsApp\n• Panel de administración\n\n💰 Desde *$${formatMoney(config.ecommercePriceFrom)}*\n\nSi querés, respondé *presupuesto*.`
+    return `🛒 *Tienda Online*
+
+Ideal para vender productos por internet y automatizar consultas.
+
+Incluye:
+• Catálogo
+• Carrito o pedido
+• Integración WhatsApp
+• Panel de administración
+
+💰 Desde *$${formatMoney(config.ecommercePrice.min)}*
+
+Si querés, respondé *presupuesto*.`
   }
+
   if (intent === 'sistema') {
-    return `⚙️ *Sistema a medida*\n\nPodemos desarrollar:\n• Turnos\n• Reservas\n• Gestión de clientes\n• Control de stock\n• Panel administrador\n\n💰 Desde *$${formatMoney(config.systemPriceFrom)}*\n\nSi querés, respondé *presupuesto*.`
+    return `⚙️ *Sistema a medida*
+
+Podemos desarrollar:
+• Turnos
+• Reservas
+• Gestión de clientes
+• Control de stock
+• Panel administrador
+
+💰 Desde *$${formatMoney(config.systemPrice.min)}*
+
+Si querés, respondé *presupuesto*.`
   }
+
   return null
 }
 
 function defaultFallback() {
-  return `No te entendí del todo 👌\n\nPodés responder con:\n\n1️⃣ Presupuesto web\n2️⃣ Landing Page\n3️⃣ Página web empresarial\n4️⃣ Tienda online\n5️⃣ Sistema a medida\n6️⃣ Ver portfolio\n7️⃣ Hablar con asesor\n\nO escribir:\n*precio, web, tienda, sistema, portfolio, asesor*`
+  return `No te entendí del todo 👌
+
+Podés responder con:
+
+1️⃣ Presupuesto web
+2️⃣ Landing Page
+3️⃣ Página web empresarial
+4️⃣ Tienda online
+5️⃣ Sistema a medida
+6️⃣ Hablar con asesor`
 }
 
 function isSelfBotEcho(text) {
   const t = normalizeText(text)
   return [
     'mye software',
-    'portfolio automatico',
     'presupuesto automatico',
     'resumen de tu consulta',
     'no te entendi del todo',
@@ -476,19 +599,39 @@ async function processReminders(sock) {
     }
 
     const message = reminder.sentCount === 0
-      ? `Hola 👋 Solo quería saber si pudiste ver la información que te enviamos.\n\nSi querés seguimos por acá:\n1️⃣ Presupuesto\n2️⃣ Landing\n3️⃣ Web\n4️⃣ Tienda\n5️⃣ Sistema\n7️⃣ Asesor`
-      : `Te escribo por última vez para no molestarte 😊\n\nSi todavía querés avanzar con tu proyecto, respondé:\n1️⃣ Presupuesto\n7️⃣ Asesor`
+      ? `Hola 👋 Solo quería saber si pudiste ver la información que te enviamos.
+
+Si querés seguimos por acá:
+1️⃣ Presupuesto
+2️⃣ Landing
+3️⃣ Web
+4️⃣ Tienda
+5️⃣ Sistema
+6️⃣ Asesor`
+      : `Te escribo por última vez para no molestarte 😊
+
+Si todavía querés avanzar con tu proyecto, respondé:
+1️⃣ Presupuesto
+6️⃣ Asesor`
 
     try {
       await sendAndTrack(sock, reminder.chatId, message)
       reminder.sentCount = (reminder.sentCount || 0) + 1
       reminder.dueAt = new Date(Date.now() + config.followupDelayMinutes * 60 * 1000).toISOString()
+
       saveLeadPatch(reminder.telefono, {
         followupCount: reminder.sentCount,
-        estado: reminder.sentCount >= config.maxFollowups ? 'seguimiento_finalizado' : 'seguimiento_activo'
+        estado: reminder.sentCount >= config.maxFollowups
+          ? 'seguimiento_finalizado'
+          : 'seguimiento_activo'
       })
+
       updateTagsAndLevel(reminder.telefono)
-      if (reminder.sentCount >= config.maxFollowups) reminder.active = false
+
+      if (reminder.sentCount >= config.maxFollowups) {
+        reminder.active = false
+      }
+
       changed = true
     } catch (error) {
       console.error('❌ Error enviando seguimiento:', error.message)
@@ -505,9 +648,9 @@ function startReminderLoop(sock) {
 }
 
 function normalizePhoneForWhatsApp(phone = '') {
+  if (String(phone).includes('@s.whatsapp.net')) return phone
   const digits = String(phone).replace(/\D/g, '')
   if (!digits) return ''
-  if (digits.includes('@s.whatsapp.net')) return digits
   return `${digits}@s.whatsapp.net`
 }
 
@@ -516,8 +659,10 @@ async function sendManualMessage(phone, text) {
   if (!sock || !botStatus.connected) {
     throw new Error('El bot todavía no está conectado a WhatsApp')
   }
+
   const jid = normalizePhoneForWhatsApp(phone)
   if (!jid) throw new Error('Teléfono inválido')
+
   await sendAndTrack(sock, jid, text)
   return { ok: true, phone: jid }
 }
@@ -530,7 +675,9 @@ async function ingestWebLead(leadPayload = {}) {
   const extrasRaw = leadPayload.extras || leadPayload.features || ''
   const extras = Array.isArray(extrasRaw) ? extrasRaw.join(', ') : extrasRaw
   const urgency = leadPayload.urgencia || leadPayload.timeline || leadPayload.deadline || 'Media'
-  const budgetRange = detectBudgetRange(leadPayload.budgetRange || leadPayload.presupuesto || leadPayload.estimatedRange || '')
+  const budgetRange = detectBudgetRange(
+    leadPayload.budgetRange || leadPayload.presupuesto || leadPayload.estimatedRange || ''
+  )
   const intent = inferIntent(project) || 'web'
 
   saveLeadPatch(phone, {
@@ -547,14 +694,27 @@ async function ingestWebLead(leadPayload = {}) {
     interes: intent,
     estado: 'lead_web_recibido',
     deseaSeguimiento: leadPayload.deseaSeguimiento === true,
-    nivel: classifyLeadByIntent(intent, `${project} ${leadPayload.consulta || ''}`, { budgetRange, urgencia: urgency })
+    nivel: classifyLeadByIntent(intent, `${project} ${leadPayload.consulta || ''}`, {
+      budgetRange,
+      urgencia: urgency
+    })
   })
+
   updateTagsAndLevel(phone)
 
   const est = estimateByProject(project, extras)
-  const message = `Hola ${leadPayload.nombre || ''} 👋\n\nGracias por solicitar un presupuesto en *${getConfig().companyName}*.\n\n🧩 Proyecto: *${project}*\n💰 Estimación inicial: *$${formatMoney(est.min)}* a *$${formatMoney(est.max)}*.*\n📌 Próximo paso: revisar detalles y enviarte propuesta final.\n\nSi querés, respondé este mensaje con más información o escribí *asesor*.`
+  const message = `Hola ${leadPayload.nombre || ''} 👋
+
+Gracias por solicitar un presupuesto en *${getConfig().companyName}*.
+
+🧩 Proyecto: *${project}*
+💰 Estimación inicial: *$${formatMoney(est.min)}* a *$${formatMoney(est.max)}*.
+📌 Próximo paso: revisar detalles y enviarte propuesta final.
+
+Si querés, respondé este mensaje con más información o escribí *asesor*.`
 
   let sent = false
+
   try {
     await sendManualMessage(phone, message)
     sent = true
@@ -612,12 +772,12 @@ async function startBot() {
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
-if (qr) {
+
+    if (qr) {
       lastQr = qr
       botStatus.lastQrAt = new Date().toISOString()
-      
+
       try {
-        // 1. Intento principal: Generar DataURL para el Panel Web
         lastQrImage = await QRCodeImage.toDataURL(qr, {
           errorCorrectionLevel: 'M',
           margin: 2,
@@ -629,21 +789,19 @@ if (qr) {
         botStatus.lastError = error.message
       }
 
-      // 2. RESPALDO INFAILIBLE: Link de imagen externa (siempre funciona)
       console.log('\n-------------------------------------------------------')
-      console.log('🔗 LINK DE EMERGENCIA (Si el panel o la consola fallan):');
-      console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`);
-      console.log('-------------------------------------------------------\n');
+      console.log('🔗 LINK DE EMERGENCIA (Si el panel o la consola fallan):')
+      console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`)
+      console.log('-------------------------------------------------------\n')
 
-      // 3. RESPALDO CONSOLA: Por si estás viendo la terminal de Oracle/Render
       try {
-        const QRCodeTerminal = require('qrcode-terminal');
-        QRCodeTerminal.generate(qr, { small: true });
+        const QRCodeTerminal = require('qrcode-terminal')
+        QRCodeTerminal.generate(qr, { small: true })
       } catch (e) {
-        console.log("No se pudo mostrar QR en terminal, usá el link de arriba.");
+        console.log('No se pudo mostrar QR en terminal, usá el link de arriba.')
       }
 
-      console.log(`🌐 Recordá que podés entrar a: ${getConfig().publicBaseUrl || 'http://TU_IP:3000'}/qr`);
+      console.log(`🌐 Recordá que podés entrar a: ${getConfig().publicBaseUrl}/qr`)
     }
 
     if (connection === 'open') {
@@ -654,14 +812,17 @@ if (qr) {
       botStatus.lastError = null
       lastQr = null
       lastQrImage = null
+
       console.log('✅ Bot conectado correctamente a WhatsApp.')
       console.log('✅ Oracle VPS mode activo: sesión persistente, QR web, panel simple y PM2.')
+
       startReminderLoop(sock)
     }
 
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+
       botStatus.connected = false
       botStatus.lastError = `Conexión cerrada. Código ${statusCode}`
 
@@ -670,7 +831,9 @@ if (qr) {
       if (shouldReconnect && !reconnecting) {
         reconnecting = true
         console.log('🔄 Reintentando conexión en 3 segundos...')
-        setTimeout(() => startBot().catch(err => console.error('❌ Reintento fallido:', err.message)), 3000)
+        setTimeout(() => {
+          startBot().catch(err => console.error('❌ Reintento fallido:', err.message))
+        }, 3000)
       } else if (!shouldReconnect) {
         console.log(`❌ Sesión cerrada. Eliminá la carpeta ${sessionsDir} y volvé a escanear.`)
       }
@@ -704,10 +867,55 @@ if (qr) {
       consulta: rawText,
       ultimoMensajeAt: new Date().toISOString()
     })
-    if (senderName) saveLeadPatch(phone, { nombre: getLead(phone)?.nombre || senderName })
+
+    if (senderName) {
+      const currentLead = getLead(phone)
+      saveLeadPatch(phone, { nombre: currentLead?.nombre || senderName })
+    }
 
     try {
       cancelFollowup(phone)
+
+      const insultos = ['boludo', 'mierda', 'estafa', 'hdp', 'pelotudo']
+      if (insultos.some(i => text.includes(i))) {
+        await sendAndTrack(
+          sock,
+          from,
+          'Mantenemos un ambiente de respeto profesional. Si tenés dudas técnicas, por favor seleccioná una opción del menú.'
+        )
+        return
+      }
+
+      if (
+        text.includes('portfolio') ||
+        text.includes('ejemplos') ||
+        text.includes('trabajos')
+      ) {
+        await sendAndTrack(
+          sock,
+          from,
+          `Por políticas de privacidad de nuestros clientes, no exponemos trabajos actuales. Garantizamos calidad óptima en cada entrega.
+
+Podés ver más en: ${getConfig().webSite}`
+        )
+        return
+      }
+
+      const opcionesValidas = ['1', '2', '3', '4', '5', '6']
+      if (!opcionesValidas.includes(text) && !session.step) {
+        const knownIntent = inferIntent(rawText)
+        const knownRule = findBestRule(rawText, rules)
+        const knownWords = ['menu', 'menú', 'cancelar', 'salir', 'reiniciar', 'inicio', 'hola', 'buenas']
+
+        if (!knownIntent && !knownRule && !knownWords.includes(text)) {
+          await sendAndTrack(
+            sock,
+            from,
+            `⚠️ Opción no válida. Por favor, ingresá solo el número de la opción deseada:\n\n${buildMenu()}`
+          )
+          return
+        }
+      }
 
       if (['menu', 'menú', 'cancelar', 'salir', 'reiniciar', 'inicio', 'hola', 'buenas'].includes(text)) {
         clearChatSession(from)
@@ -719,11 +927,20 @@ if (qr) {
         session.data.nombre = rawText.trim()
         session.step = getConfig().askEmailInFlow ? 'budget_email' : 'budget_rubro'
         setChatSession(from, session)
-        saveLeadPatch(phone, { nombre: rawText.trim(), estado: 'capturando_datos' })
+
+        saveLeadPatch(phone, {
+          nombre: rawText.trim(),
+          estado: 'capturando_datos'
+        })
         updateTagsAndLevel(phone)
-        await sendAndTrack(sock, from, getConfig().askEmailInFlow
-          ? `*Paso 2 de 8*\n¿Cuál es tu *email*?\n\nSi no querés dejarlo ahora, respondé *no tengo*.`
-          : `*Paso 2 de 8*\n¿A qué se dedica tu negocio o rubro?`)
+
+        await sendAndTrack(
+          sock,
+          from,
+          getConfig().askEmailInFlow
+            ? `*Paso 2 de 8*\n¿Cuál es tu *email*?\n\nSi no querés dejarlo ahora, respondé *no tengo*.`
+            : `*Paso 2 de 8*\n¿A qué se dedica tu negocio o rubro?`
+        )
         return
       }
 
@@ -731,8 +948,13 @@ if (qr) {
         session.data.email = rawText.trim()
         session.step = 'budget_rubro'
         setChatSession(from, session)
-        saveLeadPatch(phone, { email: rawText.trim(), estado: 'capturando_datos' })
+
+        saveLeadPatch(phone, {
+          email: rawText.trim(),
+          estado: 'capturando_datos'
+        })
         updateTagsAndLevel(phone)
+
         await sendAndTrack(sock, from, `*Paso 3 de 8*\n¿A qué se dedica tu negocio o rubro?`)
         return
       }
@@ -741,9 +963,18 @@ if (qr) {
         session.data.rubro = rawText.trim()
         session.step = 'budget_project'
         setChatSession(from, session)
-        saveLeadPatch(phone, { rubro: rawText.trim(), estado: 'capturando_datos' })
+
+        saveLeadPatch(phone, {
+          rubro: rawText.trim(),
+          estado: 'capturando_datos'
+        })
         updateTagsAndLevel(phone)
-        await sendAndTrack(sock, from, `*Paso 4 de 8*\n¿Qué necesitás?\n\nEjemplos:\n• Landing Page\n• Página web empresarial\n• Tienda online\n• Sistema a medida`)
+
+        await sendAndTrack(
+          sock,
+          from,
+          `*Paso 4 de 8*\n¿Qué necesitás?\n\nEjemplos:\n• Landing Page\n• Página web empresarial\n• Tienda online\n• Sistema a medida`
+        )
         return
       }
 
@@ -751,6 +982,7 @@ if (qr) {
         session.data.proyecto = rawText.trim()
         session.step = 'budget_extras'
         setChatSession(from, session)
+
         const intent = inferIntent(rawText) || 'web'
         saveLeadPatch(phone, {
           proyecto: rawText.trim(),
@@ -759,7 +991,12 @@ if (qr) {
           estado: 'capturando_datos'
         })
         updateTagsAndLevel(phone)
-        await sendAndTrack(sock, from, `*Paso 5 de 8*\n¿Necesitás algo extra?\n\nEjemplos:\n• Botón de WhatsApp\n• Formulario\n• Catálogo\n• Panel administrador\n• Nada más`)
+
+        await sendAndTrack(
+          sock,
+          from,
+          `*Paso 5 de 8*\n¿Necesitás algo extra?\n\nEjemplos:\n• Botón de WhatsApp\n• Formulario\n• Catálogo\n• Panel administrador\n• Nada más`
+        )
         return
       }
 
@@ -767,11 +1004,20 @@ if (qr) {
         session.data.extras = rawText.trim()
         session.step = getConfig().askBudgetRangeInFlow ? 'budget_range' : 'budget_urgency'
         setChatSession(from, session)
-        saveLeadPatch(phone, { extras: rawText.trim(), estado: 'capturando_datos' })
+
+        saveLeadPatch(phone, {
+          extras: rawText.trim(),
+          estado: 'capturando_datos'
+        })
         updateTagsAndLevel(phone)
-        await sendAndTrack(sock, from, getConfig().askBudgetRangeInFlow
-          ? `*Paso 6 de 8*\n¿Qué nivel de inversión aproximado tenés pensado?\n\nPodés responder:\n• Bajo\n• Medio\n• Alto\n• No lo sé todavía`
-          : `*Paso 6 de 8*\n¿Qué tan urgente es?\n\nPodés responder:\n• Alta\n• Media\n• Baja`)
+
+        await sendAndTrack(
+          sock,
+          from,
+          getConfig().askBudgetRangeInFlow
+            ? `*Paso 6 de 8*\n¿Qué nivel de inversión aproximado tenés pensado?\n\nPodés responder:\n• Bajo\n• Medio\n• Alto\n• No lo sé todavía`
+            : `*Paso 6 de 8*\n¿Qué tan urgente es?\n\nPodés responder:\n• Alta\n• Media\n• Baja`
+        )
         return
       }
 
@@ -779,9 +1025,18 @@ if (qr) {
         session.data.budgetRange = rawText.trim()
         session.step = 'budget_urgency'
         setChatSession(from, session)
-        saveLeadPatch(phone, { budgetRange: detectBudgetRange(rawText), estado: 'capturando_datos' })
+
+        saveLeadPatch(phone, {
+          budgetRange: detectBudgetRange(rawText),
+          estado: 'capturando_datos'
+        })
         updateTagsAndLevel(phone)
-        await sendAndTrack(sock, from, `*Paso 7 de 8*\n¿Qué tan urgente es?\n\nPodés responder:\n• Alta\n• Media\n• Baja`)
+
+        await sendAndTrack(
+          sock,
+          from,
+          `*Paso 7 de 8*\n¿Qué tan urgente es?\n\nPodés responder:\n• Alta\n• Media\n• Baja`
+        )
         return
       }
 
@@ -789,8 +1044,13 @@ if (qr) {
         session.data.urgencia = rawText.trim()
         session.step = 'budget_followup_permission'
         setChatSession(from, session)
-        saveLeadPatch(phone, { urgencia: rawText.trim(), estado: 'capturando_datos' })
+
+        saveLeadPatch(phone, {
+          urgencia: rawText.trim(),
+          estado: 'capturando_datos'
+        })
         updateTagsAndLevel(phone)
+
         await sendAndTrack(sock, from, buildFollowupQuestion())
         return
       }
@@ -813,6 +1073,7 @@ if (qr) {
           budgetRange: normalizedRange,
           urgencia: session.data.urgencia || ''
         })
+
         saveLeadPatch(phone, {
           nombre: session.data.nombre || getLead(phone)?.nombre || senderName || '',
           email: session.data.email || '',
@@ -830,10 +1091,18 @@ if (qr) {
 
         if (accepted) scheduleFollowup(phone, from)
 
-        let response = `${buildBudgetSummary(session.data)}\n\n${accepted ? '✅ Seguimiento automático activado. Te voy a escribir como máximo 2 veces si no respondés.' : '✅ Perfecto, no activamos seguimiento automático.'}\n\nSi querés ver ejemplos, escribí *portfolio*.\nSi querés hablar con una persona, escribí *asesor*.`
+        let response = `${buildBudgetSummary(session.data)}
+
+${accepted
+  ? '✅ Seguimiento automático activado. Te voy a escribir como máximo 2 veces si no respondés.'
+  : '✅ Perfecto, no activamos seguimiento automático.'}
+
+Si querés hablar con una persona, escribí *asesor*.`
+
         if (getConfig().autoSendPortfolioAfterBudget) {
           response += `\n\n${buildPortfolioMessage()}`
         }
+
         await sendAndTrack(sock, from, response)
         return
       }
@@ -842,20 +1111,15 @@ if (qr) {
       if (intent) {
         if (intent === 'budget') {
           setChatSession(from, { step: 'budget_name', data: {} })
+
           saveLeadPatch(phone, {
             interes: 'budget',
             nivel: classifyLeadByIntent('budget', rawText),
             estado: 'inicio_presupuesto'
           })
           updateTagsAndLevel(phone)
-          await sendAndTrack(sock, from, buildBudgetStart())
-          return
-        }
 
-        if (intent === 'portfolio') {
-          saveLeadPatch(phone, { interes: 'portfolio', estado: 'portfolio_enviado' })
-          updateTagsAndLevel(phone)
-          await sendAndTrack(sock, from, buildPortfolioMessage())
+          await sendAndTrack(sock, from, buildBudgetStart())
           return
         }
 
@@ -866,8 +1130,25 @@ if (qr) {
             estado: 'derivado_humano'
           })
           updateTagsAndLevel(phone)
+
           const cfg = getConfig()
-          await sendAndTrack(sock, from, `👨‍💼 *Derivación automática a humano*\n\nPerfecto. Tu consulta quedó marcada para atención humana.\n\n⏰ Horario:\n${cfg.humanHours}\n${cfg.advisorPhone ? `📱 WhatsApp asesor: ${cfg.advisorPhone}\n` : ''}${cfg.advisorEmail ? `📧 Email: ${cfg.advisorEmail}\n` : ''}\nMientras tanto, si querés, dejame:\n• Tu nombre\n• Tu rubro\n• Qué necesitás\n\nAsí te ayudamos más rápido.`)
+
+          await sendAndTrack(
+            sock,
+            from,
+            `👨‍💼 *Derivación automática a humano*
+
+Perfecto. Tu consulta quedó marcada para atención humana.
+
+⏰ Horario:
+${cfg.humanHours}
+${cfg.advisorPhone ? `📱 WhatsApp asesor: ${cfg.advisorPhone}\n` : ''}${cfg.advisorEmail ? `📧 Email: ${cfg.advisorEmail}\n` : ''}Mientras tanto, si querés, dejame:
+• Tu nombre
+• Tu rubro
+• Qué necesitás
+
+Así te ayudamos más rápido.`
+          )
           return
         }
 
@@ -879,6 +1160,7 @@ if (qr) {
             estado: 'interes_servicio'
           })
           updateTagsAndLevel(phone)
+
           await sendAndTrack(sock, from, pitch)
           return
         }

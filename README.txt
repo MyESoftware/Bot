@@ -7,7 +7,7 @@ Qué trae esta versión
 - Presupuesto guiado en 8 pasos
 - Captura de nombre, email, rubro, proyecto, extras, urgencia y rango de inversión
 - Seguimiento automático con máximo 2 recordatorios
-- Portfolio automático
+
 - Derivación a humano
 - Webhook para recibir leads desde tu web en Vercel
 - Panel simple de leads

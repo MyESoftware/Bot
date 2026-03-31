@@ -16,7 +16,7 @@
       "hola quiero info",
       "hola necesito ayuda"
     ],
-    "response": "Hola 👋 Soy el BOT de MyE Software.\n\nEstoy disponible 24hs para responder consultas.\n\n⏰ Atención humana\nLunes a Viernes de 09:00 a 16:00 hs\nFeriados no hay atención.\n\nPodemos ayudarte con:\n\n1️⃣ Presupuesto web\n2️⃣ Landing Page\n3️⃣ Página web empresarial\n4️⃣ Tienda online\n5️⃣ Sistema a medida\n6️⃣ Ver ejemplos de trabajos\n7️⃣ Hablar con asesor\n\nRespondé con el número o escribí tu consulta."
+    "response": "Hola 👋 Soy el BOT de MyE Software.\n\nEstoy disponible 24hs para responder consultas.\n\n⏰ Atención por Parte de un Agente\nLunes a Viernes de 10:00 a 17:00 hs\nFeriados no hay atención.\n\nPodemos ayudarte con:\n\n1️⃣ Presupuesto web\n2️⃣ Landing Page\n3️⃣ Página web empresarial\n4️⃣ Tienda online\n5️⃣ Sistema a medida\n6️⃣  Hablar con asesor\n\nRespondé con el número o escribí tu consulta."
   },
   {
     "id": "excel_rule_2",
@@ -2441,18 +2441,6 @@
       "hablar",
       "hablar asesor"
     ],
-    "response": "Perfecto 👍\n\nUn asesor de MyE Software puede ayudarte.\n\n⏰ Horario de atención:\nLunes a Viernes de 09:00 a 16:00 hs\n\nDejanos tu consulta y te responderemos dentro del horario."
-  },
-  {
-    "id": "system_rule_portfolio",
-    "source": "system",
-    "keywords": [
-      "portfolio",
-      "portafolio",
-      "ejemplos",
-      "trabajos",
-      "muestras"
-    ],
-    "response": "📂 *Portfolio automático*\n\nTe puedo mostrar ejemplos de landing pages, webs empresariales, tiendas online y sistemas a medida.\n\nEscribí *6* para ver portfolio o *1* para presupuesto."
+    "response": "Perfecto 👍\n\nUn asesor de MyE Software puede ayudarte.\n\n⏰ Horario de atención:\nLunes a Viernes de 10:00 a 17:00 hs\n\nDejanos tu consulta y te responderemos dentro del horario."
   }
 ]

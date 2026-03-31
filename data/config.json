@@ -1,11 +1,20 @@
 {
   "companyName": "MyE Software",
-  "humanHours": "Lunes a Viernes de 09:00 a 16:00 hs",
+  "webSite": "https://myesoftware.com.ar",
+  "publicBaseUrl": "http://TU_IP:3000",
+  "humanHours": "Lunes a Viernes de 10:00 a 18:00 hs",
+  "advisorPhone": "",
+  "advisorEmail": "",
+  "askEmailInFlow": true,
+  "askBudgetRangeInFlow": true,
+  "autoSendPortfolioAfterBudget": false,
+  "followupDelayMinutes": 60,
+  "maxFollowups": 2,
+  "landingPrice": { "min": 160000, "max": 260000 },
+  "webPrice": { "min": 275000, "max": 515000 },
+  "ecommercePrice": { "min": 990000, "max": 1550000 },
+  "systemPrice": { "min": 490000, "max": 2500000 },
   "portfolioLinks": [
-    "https://mye-software-demo-1.com",
-    "https://mye-software-demo-2.com",
-    "https://mye-software-demo-3.com"
-  ],
-  "followupDelayMinutes": 360,
-  "maxFollowups": 2
+    "https://myesoftware.com.ar"
+  ]
 }
