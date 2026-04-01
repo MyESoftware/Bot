@@ -84,6 +84,7 @@ function getTextFromMessage(msg) {
 function ownJids(sock) {
   const raw = sock?.user?.id || ''
   const phone = raw.split(':')[0]
+
   return new Set([
     raw,
     phone,
@@ -109,9 +110,7 @@ function getConfig() {
     webPrice: { min: 275000, max: 515000 },
     ecommercePrice: { min: 990000, max: 1550000 },
     systemPrice: { min: 490000, max: 2500000 },
-    portfolioLinks: [
-      'https://myesoftware.com.ar'
-    ]
+    portfolioLinks: ['https://myesoftware.com.ar']
   }
 
   const fileConfig = readJson(configFile, defaultConfig)
@@ -145,6 +144,7 @@ function getConfig() {
 function detectBudgetRange(text = '') {
   const t = normalizeText(text)
   if (!t) return ''
+
   if (
     t.includes('menos') ||
     t.includes('bajo') ||
@@ -178,10 +178,12 @@ function classifyLeadByIntent(intent, text, lead = {}) {
 
   if (intent === 'asesor') return 'listo'
   if (intent === 'tienda' || intent === 'sistema') return 'caliente'
+
   if (intent === 'web' || intent === 'landing') {
     if (budgetRange === 'alto' || urgency === 'alta') return 'caliente'
     return 'tibio'
   }
+
   if (t.includes('precio') || t.includes('presupuesto') || t.includes('costo')) return 'tibio'
   return 'frio'
 }
@@ -237,6 +239,7 @@ function findBestRule(message, rules) {
     for (const keyword of rule.normalizedKeywords) {
       const exact = normalized === keyword
       const includes = normalized.includes(keyword)
+
       if (exact || includes) {
         if (!bestMatch || keyword.length > bestMatch.keyword.length) {
           bestMatch = { rule, keyword }
@@ -276,7 +279,11 @@ function saveLeadPatch(phone, patch) {
   const idx = leads.findIndex(l => l.telefono === phone)
 
   if (idx === -1) {
-    leads.push({ ...defaultLead(phone), ...patch, updatedAt: new Date().toISOString() })
+    leads.push({
+      ...defaultLead(phone),
+      ...patch,
+      updatedAt: new Date().toISOString()
+    })
   } else {
     leads[idx] = {
       ...leads[idx],
@@ -310,13 +317,14 @@ function updateTagsAndLevel(phone) {
   if (lead.proyecto) tags.add('proyecto_capturado')
   if (lead.budgetRange) tags.add(`presupuesto_${normalizeText(lead.budgetRange)}`)
   if (lead.estado) tags.add(`estado_${normalizeText(lead.estado).replace(/\s+/g, '_')}`)
-  if (lead.nivel) tags.add(`lead_${lead.nivel}`)
 
   const refreshedLevel = classifyLeadByIntent(
     lead.interes,
     `${lead.proyecto} ${lead.consulta}`,
     lead
   )
+
+  tags.add(`lead_${refreshedLevel}`)
 
   saveLeadPatch(phone, {
     etiquetas: Array.from(tags),
@@ -391,6 +399,69 @@ Hola. Seleccioná una opción escribiendo solo el *NÚMERO*:
 
 ---
 ⚠️ Por favor, respondé solo con el número de la opción deseada.`
+}
+
+function buildProjectOptionsMenu() {
+  return `*Paso 4 de 8*
+¿Qué necesitás?
+
+Respondé solo con el *número*:
+
+1️⃣ Landing Page
+2️⃣ Página web empresarial
+3️⃣ Tienda online
+4️⃣ Sistema a medida`
+}
+
+function buildExtrasOptionsMenu() {
+  return `*Paso 5 de 8*
+¿Qué extras necesitás?
+
+Respondé uno o varios números separados por coma.
+
+Ejemplo:
+*1,2,4*
+
+Opciones:
+1️⃣ Botón de WhatsApp
+2️⃣ Formulario de contacto
+3️⃣ Catálogo
+4️⃣ Panel administrador
+5️⃣ Nada más`
+}
+
+function mapProjectOption(option) {
+  const map = {
+    '1': 'Landing Page',
+    '2': 'Página web empresarial',
+    '3': 'Tienda online',
+    '4': 'Sistema a medida'
+  }
+  return map[option] || null
+}
+
+function mapExtrasOptions(input) {
+  const map = {
+    '1': 'Botón de WhatsApp',
+    '2': 'Formulario',
+    '3': 'Catálogo',
+    '4': 'Panel administrador',
+    '5': 'Nada más'
+  }
+
+  const values = String(input)
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean)
+
+  if (!values.length) return null
+
+  const unique = [...new Set(values)]
+
+  if (unique.some(v => !map[v])) return null
+  if (unique.includes('5') && unique.length > 1) return null
+
+  return unique.map(v => map[v]).join(', ')
 }
 
 function estimateByProject(project, extras = '') {
@@ -472,6 +543,16 @@ function buildPortfolioMessage() {
   const config = getConfig()
   const links = (config.portfolioLinks || []).join('\n• ')
   return `📁 *Portfolio / referencias*\n• ${links}`
+}
+
+function buildHumanCaptureStart() {
+  return `👨‍💼 *Derivación automática a humano*
+
+Perfecto. Tu consulta quedó marcada para atención humana.
+
+Mientras tanto, para ayudarte más rápido, respondé con tu *nombre*.
+
+*Paso 1 de 3*`
 }
 
 function buildSalesPitchForIntent(intent) {
@@ -616,14 +697,18 @@ Si todavía querés avanzar con tu proyecto, respondé:
 
     try {
       await sendAndTrack(sock, reminder.chatId, message)
+
       reminder.sentCount = (reminder.sentCount || 0) + 1
-      reminder.dueAt = new Date(Date.now() + config.followupDelayMinutes * 60 * 1000).toISOString()
+      reminder.dueAt = new Date(
+        Date.now() + config.followupDelayMinutes * 60 * 1000
+      ).toISOString()
 
       saveLeadPatch(reminder.telefono, {
         followupCount: reminder.sentCount,
-        estado: reminder.sentCount >= config.maxFollowups
-          ? 'seguimiento_finalizado'
-          : 'seguimiento_activo'
+        estado:
+          reminder.sentCount >= config.maxFollowups
+            ? 'seguimiento_finalizado'
+            : 'seguimiento_activo'
       })
 
       updateTagsAndLevel(reminder.telefono)
@@ -668,7 +753,10 @@ async function sendManualMessage(phone, text) {
 }
 
 async function ingestWebLead(leadPayload = {}) {
-  const phone = String(leadPayload.telefono || leadPayload.phone || '').replace(/\D/g, '')
+  const phone = String(
+    leadPayload.telefono || leadPayload.phone || ''
+  ).replace(/\D/g, '')
+
   if (!phone) throw new Error('El lead debe incluir telefono')
 
   const project = leadPayload.proyecto || leadPayload.projectType || 'Página Web Profesional'
@@ -901,25 +989,72 @@ Podés ver más en: ${getConfig().webSite}`
         return
       }
 
-      const opcionesValidas = ['1', '2', '3', '4', '5', '6']
-      if (!opcionesValidas.includes(text) && !session.step) {
-        const knownIntent = inferIntent(rawText)
-        const knownRule = findBestRule(rawText, rules)
-        const knownWords = ['menu', 'menú', 'cancelar', 'salir', 'reiniciar', 'inicio', 'hola', 'buenas']
-
-        if (!knownIntent && !knownRule && !knownWords.includes(text)) {
-          await sendAndTrack(
-            sock,
-            from,
-            `⚠️ Opción no válida. Por favor, ingresá solo el número de la opción deseada:\n\n${buildMenu()}`
-          )
-          return
-        }
-      }
-
       if (['menu', 'menú', 'cancelar', 'salir', 'reiniciar', 'inicio', 'hola', 'buenas'].includes(text)) {
         clearChatSession(from)
         await sendAndTrack(sock, from, buildMenu())
+        return
+      }
+
+      if (session.step === 'human_name') {
+        session.data.nombre = rawText.trim()
+        session.step = 'human_rubro'
+        setChatSession(from, session)
+
+        saveLeadPatch(phone, {
+          nombre: rawText.trim(),
+          estado: 'derivado_humano_datos'
+        })
+        updateTagsAndLevel(phone)
+
+        await sendAndTrack(sock, from, `*Paso 2 de 3*\n¿A qué se dedica tu negocio o rubro?`)
+        return
+      }
+
+      if (session.step === 'human_rubro') {
+        session.data.rubro = rawText.trim()
+        session.step = 'human_need'
+        setChatSession(from, session)
+
+        saveLeadPatch(phone, {
+          rubro: rawText.trim(),
+          estado: 'derivado_humano_datos'
+        })
+        updateTagsAndLevel(phone)
+
+        await sendAndTrack(sock, from, `*Paso 3 de 3*\nContame brevemente qué necesitás.`)
+        return
+      }
+
+      if (session.step === 'human_need') {
+        session.data.proyecto = rawText.trim()
+
+        saveLeadPatch(phone, {
+          nombre: session.data.nombre || getLead(phone)?.nombre || senderName || '',
+          rubro: session.data.rubro || '',
+          proyecto: rawText.trim(),
+          consulta: rawText.trim(),
+          interes: 'asesor',
+          estado: 'pendiente_humano',
+          nivel: 'listo'
+        })
+        updateTagsAndLevel(phone)
+
+        clearChatSession(from)
+
+        const cfg = getConfig()
+
+        await sendAndTrack(
+          sock,
+          from,
+          `✅ Gracias, ya guardé tus datos para atención humana.
+
+👤 Nombre: ${session.data.nombre || '-'}
+🏢 Rubro: ${session.data.rubro || '-'}
+🧩 Necesidad: ${rawText.trim()}
+
+⏰ Te responderemos dentro del horario de atención:
+${cfg.humanHours}`
+        )
         return
       }
 
@@ -970,43 +1105,57 @@ Podés ver más en: ${getConfig().webSite}`
         })
         updateTagsAndLevel(phone)
 
-        await sendAndTrack(
-          sock,
-          from,
-          `*Paso 4 de 8*\n¿Qué necesitás?\n\nEjemplos:\n• Landing Page\n• Página web empresarial\n• Tienda online\n• Sistema a medida`
-        )
+        await sendAndTrack(sock, from, buildProjectOptionsMenu())
         return
       }
 
       if (session.step === 'budget_project') {
-        session.data.proyecto = rawText.trim()
+        const proyecto = mapProjectOption(text)
+
+        if (!proyecto) {
+          await sendAndTrack(
+            sock,
+            from,
+            `⚠️ Opción no válida.\nRespondé solo con uno de estos números:\n\n${buildProjectOptionsMenu()}`
+          )
+          return
+        }
+
+        session.data.proyecto = proyecto
         session.step = 'budget_extras'
         setChatSession(from, session)
 
-        const intent = inferIntent(rawText) || 'web'
+        const intent = inferIntent(proyecto) || 'web'
         saveLeadPatch(phone, {
-          proyecto: rawText.trim(),
+          proyecto,
           interes: intent,
-          nivel: classifyLeadByIntent(intent, rawText),
+          nivel: classifyLeadByIntent(intent, proyecto),
           estado: 'capturando_datos'
         })
         updateTagsAndLevel(phone)
 
-        await sendAndTrack(
-          sock,
-          from,
-          `*Paso 5 de 8*\n¿Necesitás algo extra?\n\nEjemplos:\n• Botón de WhatsApp\n• Formulario\n• Catálogo\n• Panel administrador\n• Nada más`
-        )
+        await sendAndTrack(sock, from, buildExtrasOptionsMenu())
         return
       }
 
       if (session.step === 'budget_extras') {
-        session.data.extras = rawText.trim()
+        const extras = mapExtrasOptions(text)
+
+        if (!extras) {
+          await sendAndTrack(
+            sock,
+            from,
+            `⚠️ Opción no válida.\nRespondé con uno o varios números separados por coma.\n\n${buildExtrasOptionsMenu()}`
+          )
+          return
+        }
+
+        session.data.extras = extras
         session.step = getConfig().askBudgetRangeInFlow ? 'budget_range' : 'budget_urgency'
         setChatSession(from, session)
 
         saveLeadPatch(phone, {
-          extras: rawText.trim(),
+          extras,
           estado: 'capturando_datos'
         })
         updateTagsAndLevel(phone)
@@ -1107,6 +1256,22 @@ Si querés hablar con una persona, escribí *asesor*.`
         return
       }
 
+      const opcionesValidas = ['1', '2', '3', '4', '5', '6']
+      if (!opcionesValidas.includes(text) && !session.step) {
+        const knownIntent = inferIntent(rawText)
+        const knownRule = findBestRule(rawText, rules)
+        const knownWords = ['menu', 'menú', 'cancelar', 'salir', 'reiniciar', 'inicio', 'hola', 'buenas']
+
+        if (!knownIntent && !knownRule && !knownWords.includes(text)) {
+          await sendAndTrack(
+            sock,
+            from,
+            `⚠️ Opción no válida. Por favor, ingresá solo el número de la opción deseada:\n\n${buildMenu()}`
+          )
+          return
+        }
+      }
+
       const intent = inferIntent(rawText)
       if (intent) {
         if (intent === 'budget') {
@@ -1131,23 +1296,21 @@ Si querés hablar con una persona, escribí *asesor*.`
           })
           updateTagsAndLevel(phone)
 
+          setChatSession(from, {
+            step: 'human_name',
+            data: {}
+          })
+
           const cfg = getConfig()
 
           await sendAndTrack(
             sock,
             from,
-            `👨‍💼 *Derivación automática a humano*
+            `${buildHumanCaptureStart()}
 
-Perfecto. Tu consulta quedó marcada para atención humana.
-
-⏰ Horario:
+⏰ Horario de atención:
 ${cfg.humanHours}
-${cfg.advisorPhone ? `📱 WhatsApp asesor: ${cfg.advisorPhone}\n` : ''}${cfg.advisorEmail ? `📧 Email: ${cfg.advisorEmail}\n` : ''}Mientras tanto, si querés, dejame:
-• Tu nombre
-• Tu rubro
-• Qué necesitás
-
-Así te ayudamos más rápido.`
+${cfg.advisorPhone ? `📱 WhatsApp asesor: ${cfg.advisorPhone}\n` : ''}${cfg.advisorEmail ? `📧 Email: ${cfg.advisorEmail}\n` : ''}`.trim()
           )
           return
         }
