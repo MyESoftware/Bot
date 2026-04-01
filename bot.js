@@ -109,7 +109,7 @@ function getConfig() {
     landingPrice: { min: 160000, max: 260000 },
     webPrice: { min: 275000, max: 515000 },
     ecommercePrice: { min: 990000, max: 1550000 },
-    systemPrice: { min: 490000, max: 2500000 },
+    systemPrice: { min: 390000, max: 2500000 },
     portfolioLinks: ['https://myesoftware.com.ar']
   }
 
@@ -1022,7 +1022,7 @@ async function startBot() {
     try {
       cancelFollowup(phone)
 
-      const insultos = ['boludo', 'mierda', 'estafa', 'hdp', 'pelotudo']
+      const insultos = ['boludo', 'mierda', 'estafa', 'hdp', 'pelotudo','çuliado','chapapija','puto','puta','garca']
       if (insultos.some(i => text.includes(i))) {
         await sendAndTrack(
           sock,
