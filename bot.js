@@ -324,10 +324,11 @@ function updateTagsAndLevel(phone) {
     lead
   )
 
-  tags.add(`lead_${refreshedLevel}`)
+  const cleanedTags = Array.from(tags).filter(tag => !tag.startsWith('lead_'))
+  cleanedTags.push(`lead_${refreshedLevel}`)
 
   saveLeadPatch(phone, {
-    etiquetas: Array.from(tags),
+    etiquetas: cleanedTags,
     nivel: refreshedLevel
   })
 }
@@ -427,7 +428,31 @@ Opciones:
 2️⃣ Formulario de contacto
 3️⃣ Catálogo
 4️⃣ Panel administrador
-5️⃣ Nada más`
+5️⃣ Todos
+6️⃣ Nada más`
+}
+
+function buildBudgetRangeOptionsMenu() {
+  return `*Paso 6 de 8*
+¿Qué nivel de inversión aproximado tenés pensado?
+
+Respondé solo con el *número*:
+
+1️⃣ Bajo
+2️⃣ Medio
+3️⃣ Alto
+4️⃣ No lo sé todavía`
+}
+
+function buildUrgencyOptionsMenu() {
+  return `*Paso 7 de 8*
+¿Qué tan urgente es?
+
+Respondé solo con el *número*:
+
+1️⃣ Alta
+2️⃣ Media
+3️⃣ Baja`
 }
 
 function mapProjectOption(option) {
@@ -446,7 +471,8 @@ function mapExtrasOptions(input) {
     '2': 'Formulario',
     '3': 'Catálogo',
     '4': 'Panel administrador',
-    '5': 'Nada más'
+    '5': 'Todos',
+    '6': 'Nada más'
   }
 
   const values = String(input)
@@ -459,9 +485,34 @@ function mapExtrasOptions(input) {
   const unique = [...new Set(values)]
 
   if (unique.some(v => !map[v])) return null
+
+  if (unique.includes('6') && unique.length > 1) return null
   if (unique.includes('5') && unique.length > 1) return null
 
+  if (unique.includes('5')) {
+    return 'Botón de WhatsApp, Formulario, Catálogo, Panel administrador'
+  }
+
   return unique.map(v => map[v]).join(', ')
+}
+
+function mapBudgetRangeOption(option) {
+  const map = {
+    '1': 'Bajo',
+    '2': 'Medio',
+    '3': 'Alto',
+    '4': 'No lo sé todavía'
+  }
+  return map[option] || null
+}
+
+function mapUrgencyOption(option) {
+  const map = {
+    '1': 'Alta',
+    '2': 'Media',
+    '3': 'Baja'
+  }
+  return map[option] || null
 }
 
 function estimateByProject(project, extras = '') {
@@ -546,13 +597,20 @@ function buildPortfolioMessage() {
 }
 
 function buildHumanCaptureStart() {
-  return `👨‍💼 *Derivación automática a humano*
+  const cfg = getConfig()
 
-Perfecto. Tu consulta quedó marcada para atención humana.
+  return `👨‍💼 *Atención personalizada con un asesor*
 
-Mientras tanto, para ayudarte más rápido, respondé con tu *nombre*.
+Perfecto. Ya derivé tu consulta para seguimiento humano.
 
-*Paso 1 de 3*`
+Para agilizar la atención y que podamos responderte mejor, te voy a pedir 3 datos breves.
+
+⏰ *Horario de atención:*
+${cfg.humanHours}
+${cfg.advisorPhone ? `📱 WhatsApp asesor: ${cfg.advisorPhone}\n` : ''}${cfg.advisorEmail ? `📧 Email: ${cfg.advisorEmail}\n` : ''}
+
+*Paso 1 de 3*
+Decime tu *nombre*.`
 }
 
 function buildSalesPitchForIntent(intent) {
@@ -1160,42 +1218,54 @@ ${cfg.humanHours}`
         })
         updateTagsAndLevel(phone)
 
-        await sendAndTrack(
-          sock,
-          from,
-          getConfig().askBudgetRangeInFlow
-            ? `*Paso 6 de 8*\n¿Qué nivel de inversión aproximado tenés pensado?\n\nPodés responder:\n• Bajo\n• Medio\n• Alto\n• No lo sé todavía`
-            : `*Paso 6 de 8*\n¿Qué tan urgente es?\n\nPodés responder:\n• Alta\n• Media\n• Baja`
-        )
+        await sendAndTrack(sock, from, buildBudgetRangeOptionsMenu())
         return
       }
 
       if (session.step === 'budget_range') {
-        session.data.budgetRange = rawText.trim()
+        const budgetRange = mapBudgetRangeOption(text)
+
+        if (!budgetRange) {
+          await sendAndTrack(
+            sock,
+            from,
+            `⚠️ Opción no válida.\nRespondé solo con uno de estos números:\n\n${buildBudgetRangeOptionsMenu()}`
+          )
+          return
+        }
+
+        session.data.budgetRange = budgetRange
         session.step = 'budget_urgency'
         setChatSession(from, session)
 
         saveLeadPatch(phone, {
-          budgetRange: detectBudgetRange(rawText),
+          budgetRange: detectBudgetRange(budgetRange),
           estado: 'capturando_datos'
         })
         updateTagsAndLevel(phone)
 
-        await sendAndTrack(
-          sock,
-          from,
-          `*Paso 7 de 8*\n¿Qué tan urgente es?\n\nPodés responder:\n• Alta\n• Media\n• Baja`
-        )
+        await sendAndTrack(sock, from, buildUrgencyOptionsMenu())
         return
       }
 
       if (session.step === 'budget_urgency') {
-        session.data.urgencia = rawText.trim()
+        const urgencia = mapUrgencyOption(text)
+
+        if (!urgencia) {
+          await sendAndTrack(
+            sock,
+            from,
+            `⚠️ Opción no válida.\nRespondé solo con uno de estos números:\n\n${buildUrgencyOptionsMenu()}`
+          )
+          return
+        }
+
+        session.data.urgencia = urgencia
         session.step = 'budget_followup_permission'
         setChatSession(from, session)
 
         saveLeadPatch(phone, {
-          urgencia: rawText.trim(),
+          urgencia,
           estado: 'capturando_datos'
         })
         updateTagsAndLevel(phone)
@@ -1301,17 +1371,7 @@ Si querés hablar con una persona, escribí *asesor*.`
             data: {}
           })
 
-          const cfg = getConfig()
-
-          await sendAndTrack(
-            sock,
-            from,
-            `${buildHumanCaptureStart()}
-
-⏰ Horario de atención:
-${cfg.humanHours}
-${cfg.advisorPhone ? `📱 WhatsApp asesor: ${cfg.advisorPhone}\n` : ''}${cfg.advisorEmail ? `📧 Email: ${cfg.advisorEmail}\n` : ''}`.trim()
-          )
+          await sendAndTrack(sock, from, buildHumanCaptureStart())
           return
         }
 
